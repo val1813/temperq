@@ -1,0 +1,7 @@
+book,code,weight,asof_time,available_at,source_ref
+portfolio,A,0.6,2025-01-08T15:00:00+08:00,2025-01-08T15:00:00+08:00,synthetic-fixed-weights
+portfolio,B,0.2,2025-01-08T15:00:00+08:00,2025-01-08T15:00:00+08:00,synthetic-fixed-weights
+portfolio,CASH,0.2,2025-01-08T15:00:00+08:00,2025-01-08T15:00:00+08:00,synthetic-fixed-weights
+benchmark,A,0.5,2025-01-08T15:00:00+08:00,2025-01-08T15:00:00+08:00,synthetic-fixed-weights
+benchmark,B,0.5,2025-01-08T15:00:00+08:00,2025-01-08T15:00:00+08:00,synthetic-fixed-weights
+benchmark,CASH,0,2025-01-08T15:00:00+08:00,2025-01-08T15:00:00+08:00,synthetic-fixed-weights

@@ -1,0 +1,15 @@
+period_id,code,return,available_at,source_ref
+p1,A,-0.03,2025-01-03T15:00:00+08:00,synthetic-asset-total-return
+p1,B,-0.045,2025-01-03T15:00:00+08:00,synthetic-asset-total-return
+p2,A,-0.01,2025-01-06T15:00:00+08:00,synthetic-asset-total-return
+p2,B,0.005,2025-01-06T15:00:00+08:00,synthetic-asset-total-return
+p3,A,0.01,2025-01-07T15:00:00+08:00,synthetic-asset-total-return
+p3,B,-0.005,2025-01-07T15:00:00+08:00,synthetic-asset-total-return
+p4,A,0.03,2025-01-08T15:00:00+08:00,synthetic-asset-total-return
+p4,B,0.045,2025-01-08T15:00:00+08:00,synthetic-asset-total-return
+p5,A,0.02,2025-01-09T15:00:00+08:00,synthetic-asset-total-return
+p5,B,0.050,2025-01-09T15:00:00+08:00,synthetic-asset-total-return
+p6,A,-0.02,2025-01-10T15:00:00+08:00,synthetic-asset-total-return
+p6,B,-0.065,2025-01-10T15:00:00+08:00,synthetic-asset-total-return
+p7,A,0.00,2025-01-13T15:00:00+08:00,synthetic-asset-total-return
+p7,B,0.015,2025-01-13T15:00:00+08:00,synthetic-asset-total-return

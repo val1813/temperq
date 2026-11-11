@@ -1,0 +1,8 @@
+account_id,currency,date,event_id,kind,code,cash_delta,quantity_delta,source_ref
+synthetic-account,CNY,2025-01-04,e1,deposit,,500,0,synthetic-bank-in
+synthetic-account,CNY,2025-01-05,e2,dividend,A,20,0,synthetic-dividend
+synthetic-account,CNY,2025-01-06,e3,split,A,0,200,synthetic-split
+synthetic-account,CNY,2025-01-07,e4,withdrawal,,-1000,0,synthetic-bank-out
+synthetic-account,CNY,2025-01-07,e5,interest,,1,0,synthetic-interest
+synthetic-account,CNY,2025-01-07,e6,tax,,-2,0,synthetic-tax
+synthetic-account,CNY,2025-01-07,e7,fee,,-3,0,synthetic-fee

@@ -1,0 +1,11 @@
+{
+  "schema_version": "account_reconciliation_scope_v1",
+  "account_id": "synthetic-account",
+  "currency": "CNY",
+  "start_date": "2025-01-03",
+  "end_date": "2025-01-07",
+  "cash_basis": "trade_date_total_cash",
+  "positions_complete": true,
+  "fills_complete": true,
+  "events_complete": true
+}

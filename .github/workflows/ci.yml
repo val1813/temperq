@@ -1,0 +1,49 @@
+name: CI
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  python:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -r requirements-dev.lock
+      - run: python -m pip install --no-deps -e . -e third_party/ashare-tcost
+      - run: python -m pytest -q
+      - run: python -m pytest -q third_party/ashare-tcost/tests
+      - run: python scripts/check_repository.py
+      - run: python -m qwb.cli run examples/run_smoke.yaml
+      - run: python scripts/run_strategy_demo.py artifacts/strategy-demo
+  e2e-reference:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: astral-sh/setup-uv@v6
+      - run: uv pip install --system -r requirements-e2e.lock --torch-backend cpu
+        if: runner.os != 'Windows'
+      # Windows: wheels only, no compiler (diffcp 1.1.x has no Windows wheel).
+      - run: "uv pip install --system --only-binary :all: -r requirements-e2e-windows.lock --torch-backend cpu"
+        if: runner.os == 'Windows'
+      - run: uv pip install --system --no-deps -e . -e third_party/ashare-tcost
+      - name: Full Regression With Optional Solver Dependencies
+        run: python -m pytest -q --junitxml=artifacts/e2e-reference-pytest.xml
+      - run: python -m qwb.cli e2e check --output artifacts/e2e-reference
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-reference-${{ matrix.os }}
+          path: |
+            artifacts/e2e-reference/
+            artifacts/e2e-reference-pytest.xml

@@ -1,0 +1,4 @@
+account_id,currency,date,order_id,trade_id,code,side,quantity,price,fee
+synthetic-account,CNY,2025-01-03,o1,t1,A,buy,100,10,5
+synthetic-account,CNY,2025-01-06,o2,t2,A,sell,50,5.4,5
+synthetic-account,CNY,2025-01-07,o3,t3,A,sell,350,5.6,5

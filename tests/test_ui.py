@@ -1,0 +1,281 @@
+import io
+import re
+from pathlib import Path
+
+import pytest
+import yaml
+
+pytest.importorskip("fastapi")
+from fastapi.testclient import TestClient  # noqa: E402
+
+from qwb import pipeline, ui  # noqa: E402
+
+ROOT = Path(__file__).resolve().parents[1]
+EX = ROOT / "examples"
+
+
+def client(tmp_path):
+    (tmp_path / "examples").mkdir()
+    for f in ("cn_rank_5d.yaml", "st_task.yaml", "csv_template.csv"):
+        (tmp_path / "examples" / f).write_bytes((EX / f).read_bytes())
+    app = ui.create_app(tmp_path, runner=lambda fn: fn())   # jobs run inline
+    return app, TestClient(app)
+
+
+def form(app, **over):
+    f = {"token": app.state.token, "name": "ui_trial", "market": "cn_a", "horizon": "5",
+         "universe": "all", "capital": "100w_600w", "model": "lightgbm",
+         "dataset": ui.SYNTHETIC, "num_boost_round": "40", "n_seeds": "1"}
+    f.update(over)
+    return f
+
+
+def upload_csv(c, app, name, raw):
+    import pandas as pd
+    from qwb import csvimport
+    r=c.post('/data/csv',data={'token':app.state.token,'name':name},
+             files={'file':('data.csv',raw,'text/csv')},follow_redirects=False)
+    assert r.status_code==303
+    route=r.headers['location']
+    fields={'token':app.state.token,'name':name,'amount_unit':'yuan'}
+    for i,column in enumerate(pd.read_csv(io.BytesIO(raw),nrows=0).columns):
+        target=csvimport.ALIASES.get(column.lower(),column.lower())
+        fields['column_'+str(i)]=target if target in csvimport.FIELDS else ''
+    checked=c.post(route+'/check',data=fields)
+    if checked.status_code!=200:return checked
+    checked_hash=re.search(r'name="checked_hash" value="([^"]+)"',checked.text).group(1)
+    return c.post(route+'/save',data={'token':app.state.token,'checked_hash':checked_hash})
+
+
+def test_index_keeps_training_inputs_and_moves_explanations_to_help(tmp_path):
+    _, c = client(tmp_path)
+    page = c.get("/train").text
+    for s in ("训练设置", "行情数据", "确认训练", "开始训练"):
+        assert s in page
+    for s in ("用在哪个市场", "持有期", "在哪些股票里选", "资金规模",
+              "0–30 万", "5 亿及以上", "沪深 300", "LightGBM", "Ridge", "Kronos", "规划中"):
+        assert s in page, s
+    assert 'value="kronos" form="main" disabled' in page          # planned: cannot be picked
+    assert "合成数据演示" in page and "使用 CPU" in page
+    assert 'aria-label="本页训练设置"' not in page
+    assert '<dialog id="workspace-help"' in page
+    assert 'name="dataset" form="main"' in page
+    assert c.get("/template.csv").status_code == 200
+
+
+def test_posts_need_token_and_local_host(tmp_path):
+    app, c = client(tmp_path)
+    assert c.post("/run", data=form(app, token="x")).status_code == 403
+    assert c.post("/run", data=form(app), headers={"host": "evil.example:8765"}).status_code == 403
+    assert c.post("/data/csv", data={"token": "x", "name": "a"},
+                  files={"file": ("a.csv", b"x")}).status_code == 403
+    assert c.post("/data/tushare", data={"token": "x"}).status_code == 403
+
+
+def test_bad_inputs_get_plain_messages(tmp_path):
+    app, c = client(tmp_path)
+    assert "名称只能用" in c.post("/run", data=form(app, name="../x")).text
+    assert "种子数" in c.post("/run", data=form(app, n_seeds="50")).text
+    assert "请选择数据" in c.post("/run", data=form(app, dataset="nope")).text
+    assert "没有 ST 标记" in c.post("/run", data=form(app, universe="st")).text
+    assert "没有指数成分" in c.post("/run", data=form(app, universe="csi300")).text
+    assert "还没有接入" in c.post("/run", data=form(app, model="kronos")).text
+    assert "只支持 A 股" in c.post("/run", data=form(app, market="us")).text
+    assert "至少 30 只" in c.post("/run", data=form(app, universe="list",
+                                                   universe_list="000001 600000")).text
+
+
+def test_scenario_drives_config():
+    ds = ui.datasets(Path("."))
+    base = {"name": "a", "market": "cn_a", "dataset": ui.SYNTHETIC, "universe": "all"}
+    cfg, err, _ = ui.build_config(dict(base, horizon="20", capital="1e_5e"), ds)
+    assert err == ""
+    assert cfg["task"]["target"]["horizon_days"] == 20
+    assert cfg["train"]["portfolio"]["n_hold"] == 100
+    assert cfg["train"]["min_adv_yuan"] == round(5e8 / 100 / 0.05)
+    assert cfg["train"]["scenario"]["capital"] == "1 亿–5 亿"
+    small, _, _ = ui.build_config(dict(base, capital="lt30w"), ds)
+    assert small["train"]["portfolio"]["n_hold"] == 10
+    assert small["train"]["min_adv_yuan"] < cfg["train"]["min_adv_yuan"]
+    # step 3 override: fewer names -> bigger positions -> higher liquidity floor
+    few, _, _ = ui.build_config(dict(base, capital="lt30w", n_hold="5"), ds)
+    assert few["train"]["min_adv_yuan"] == 2 * small["train"]["min_adv_yuan"]
+    r, _, _ = ui.build_config(dict(base, model="ridge", num_leaves="31"), ds)
+    assert r["model"] == {"name": "ridge"} and r["train"]["seeds"] == [0]   # lgbm params ignored
+    lg, _, _ = ui.build_config(dict(base, num_leaves="31"), ds)
+    assert lg["model"] == {"name": "lightgbm", "params": {"num_leaves": 31}}
+    codes = " ".join(f"{600000 + i}" for i in range(30))
+    lst, err, _ = ui.build_config(dict(base, universe="list", universe_list=codes), ds)
+    assert err == "" and len(lst["train"]["universe_list"]) == 30
+    assert lst["train"]["universe_list"][0] == "600000.SH"
+
+
+def test_trial_run_end_to_end_with_verdict(tmp_path):
+    pytest.importorskip("lightgbm")
+    app, c = client(tmp_path)
+    r = c.post("/run", data=form(app), follow_redirects=False)
+    assert r.status_code == 303
+    page = c.get(r.headers["location"]).text
+    assert "完成" in page and "一句话结论" in page and "试运行数据" in page
+    assert "扣成本后" in page and "前视检查" in page and "num_boost_round = 40" in page
+    saved = yaml.safe_load((tmp_path / "runs" / "ui_configs" / "ui_trial.yaml").read_text("utf-8"))
+    assert saved["model"]["num_boost_round"] == 40
+    assert "ui_trial" in c.get("/train").text
+    assert '模型 · 训练完成' in c.get('/start').text
+    project=next((tmp_path/'runs/strategy_drafts').glob('*.json')).stem
+    model=c.get('/projects/'+project)
+    assert model.status_code==200 and '合成数据仅用于训练演示' in model.text
+
+
+def test_csv_upload_then_train(tmp_path):
+    pytest.importorskip("lightgbm")
+    app, c = client(tmp_path)
+    b = pipeline.synth_bars(n_days=800, n_codes=40).drop(columns="up_limit")
+    raw = b.to_csv(index=False).encode()
+    r = upload_csv(c,app,'mine',raw)
+    assert r.status_code==200 and 'value="mine"' in r.text
+    assert 'value="mine"' in c.get("/train").text
+    bad = upload_csv(c,app,'bad',b'a,b\n1,2\n')
+    assert '还缺：' in bad.text and '成交额' in bad.text
+    r = c.post("/run", data=form(app, name="on_csv", dataset="mine"), follow_redirects=False)
+    page = c.get(r.headers["location"]).text
+    assert "完成" in page and "一句话结论" in page
+    assert '下一步：设置规则 →' in page
+
+
+def test_tushare_form_validates_before_any_request(tmp_path):
+    app, c = client(tmp_path)
+    t = app.state.token
+    assert "请填写 Tushare token" in c.post("/data/tushare", data={
+        "token": t, "name": "x", "api_token": "", "start_year": "2018", "end_year": "2025"}).text
+    assert "至少 3 年" in c.post("/data/tushare", data={
+        "token": t, "name": "x", "api_token": "a" * 32, "start_year": "2024",
+        "end_year": "2025"}).text
+
+
+def test_markdown_render_escapes_html():
+    h = ui.md_to_html("# T\n| a | b |\n|---|---|\n| <script> | **x** |\n- item `c`")
+    assert "<script>" not in h and "&lt;script&gt;" in h and "<b>x</b>" in h
+    assert "<table>" in h and "<li>item <code>c</code></li>" in h
+
+
+def test_combined_dataset_flow(tmp_path):
+    pytest.importorskip("lightgbm")
+    import pandas as pd
+    from qwb import dataset
+    app, c = client(tmp_path)
+    t = app.state.token
+    b = pipeline.synth_bars(n_days=800, n_codes=40).drop(columns="up_limit")
+    upload_csv(c,app,'mine',b.to_csv(index=False).encode())
+    assert 'href="/data/mine" title="管理数据来源"' in c.get("/train").text
+    page = c.get("/data/mine").text
+    assert "新建组合数据" in page
+    assert c.post("/data/mine/combine", data={"token": "x", "name": "mine_plus"}).status_code == 403
+    r = c.post("/data/mine/combine", data={"token": t, "name": "mine_plus"}, follow_redirects=False)
+    assert r.headers["location"] == "/data/mine_plus"
+    page = c.get("/data/mine_plus").text
+    assert "这份数据是什么" in page and "数据什么时候能拿到" in page and "moneyflow" in page
+    f = b[["code", "date"]].assign(flow=range(len(b)))
+    f["date"] = pd.to_datetime(f["date"]).dt.strftime("%Y-%m-%d")
+    r = c.post("/data/mine_plus/source",
+               data={"token": t, "kind": "factor", "rule": "next_day", "label": "flow"},
+               files={"file": ("f.csv", io.BytesIO(f.to_csv(index=False).encode()), "text/csv")},
+               follow_redirects=False)
+    assert r.status_code == 303
+    page = c.get("/data/mine_plus").text
+    assert "flow" in page and "下一交易日决策时使用" in page
+    assert "另加 1 个来源" in c.get("/train").text
+    bad = c.post("/data/mine_plus/source", data={"token": t, "kind": "factor", "rule": "announce"},
+                 files={"file": ("g.csv", io.BytesIO(f.to_csv(index=False).encode()), "text/csv")})
+    assert "ann_date" in bad.text
+    r = c.post("/run", data=form(app, name="on_combined", dataset="mine_plus"),
+               follow_redirects=False)
+    page = c.get(r.headers["location"]).text
+    assert "完成" in page and "一句话结论" in page
+    assert "12 天 × 12 项" not in page and "前视检查" in page
+    sid = dataset.spec(tmp_path / "data" / "mine_plus")["sources"][0]["id"]
+    assert c.post("/data/mine_plus/remove", data={"token": t, "sid": sid},
+                  follow_redirects=False).status_code == 303
+    assert "还没有添加来源" in c.get("/data/mine_plus").text
+    assert c.post("/data/mine_plus/tushare", data={"token": t, "api_token": "a" * 32}).text.count("至少勾选") == 1
+
+
+def test_use_model_page_and_downloads(tmp_path):
+    pytest.importorskip("lightgbm")
+    app, c = client(tmp_path)
+    r = c.post("/run", data=form(app, name="m1", capital="30w_100w"), follow_redirects=False)
+    job = c.get(r.headers["location"]).text
+    assert "评价模型 / 继续训练" in job and "查看模型检验" in job
+    lst = c.get("/models").text
+    assert "m1" in lst and "试运行" in lst
+    page = c.get("/models/m1").text
+    assert "收盘后的决策" in page and "买入" in page and "没有任何投资含义" in page
+    assert "取前 20 只" in page                              # 30–100 万 tier -> 20 names
+    page = c.get("/models/m1?capital=50").text
+    assert "每只约 2.5 万" in page                           # 50 万 / 20 names
+    csv = c.get("/models/m1/picks.csv?capital=50")
+    assert csv.status_code == 200 and csv.content.startswith(b"\xef\xbb\xbf")
+    assert "操作" in csv.content.decode("utf-8-sig")
+    scores = c.get("/models/m1/scores.csv").content.decode("utf-8-sig")
+    assert scores.count("\n") > 100
+    assert "日期格式" in c.get("/models/m1?date=yesterday").text
+    assert "资金格式" in c.get("/models/m1?capital=abc").text
+    assert c.get("/models/..%2Fx").status_code == 404
+    assert c.get("/models/nope").status_code == 404
+
+
+def test_report_has_parameter_rulebook(tmp_path):
+    pytest.importorskip("lightgbm")
+    app, c = client(tmp_path)
+    r = c.post("/run", data=form(app, name="m2", horizon="20", n_seeds="1"), follow_redirects=False)
+    page = c.get(r.headers["location"]).text
+    assert "参数体检" in page and "已锁定" in page and "López de Prado" in page
+    assert "持有 20 天" in page and "只训练 1 次" in page
+
+
+def test_audit_external_predictions_page(tmp_path):
+    import pandas as pd
+    app, c = client(tmp_path)
+    t = app.state.token
+    b = pipeline.synth_bars(n_days=800, n_codes=40).drop(columns="up_limit")
+    upload_csv(c,app,'mine',b.to_csv(index=False).encode())
+    assert 'href="/audit"' in c.get("/settings").text and "Qlib" in c.get("/audit").text
+    b = b.sort_values(["code", "date"])
+    b["score"] = -b.groupby("code")["close"].pct_change(5)
+    last = sorted(b["date"].unique())[-300:]                 # last 300 days, every stock
+    p = b[b["date"].isin(last)].dropna(subset=["score"])
+    pred = pd.DataFrame({"datetime": pd.to_datetime(p["date"]).dt.strftime("%Y-%m-%d"),
+                         "instrument": "SZ" + p["code"].str[:6], "score": p["score"]})
+    raw = pred.to_csv(index=False).encode()
+    form_ = {"token": t, "name": "ext_q", "dataset": "mine", "horizon": "5",
+             "universe": "all", "capital": "100w_600w"}
+    assert c.post("/audit", data=dict(form_, token="x"),
+                  files={"file": ("pred.csv", io.BytesIO(raw), "text/csv")}).status_code == 403
+    bad = c.post("/audit", data=form_, files={"file": ("p.csv", io.BytesIO(b"a,b\n1,2\n"), "text/csv")})
+    assert "缺少列" in bad.text
+    r = c.post("/audit", data=form_, files={"file": ("pred.csv", io.BytesIO(raw), "text/csv")},
+               follow_redirects=False)
+    assert r.status_code == 303
+    page = c.get(r.headers["location"]).text
+    assert "体检：ext_q" in page and "完成" in page and "一句话结论" in page
+    assert "Qlib 基准口径" in page and "前视嫌疑检查" in page
+
+
+def test_model_page_loads_real_data_in_background(tmp_path):
+    pytest.importorskip("lightgbm")
+    import time
+    from qwb import picks as picks_mod
+    app, c = client(tmp_path)
+    t = app.state.token
+    b = pipeline.synth_bars(n_days=800, n_codes=40).drop(columns="up_limit")
+    upload_csv(c,app,'mine',b.to_csv(index=False).encode())
+    c.post("/run", data=form(app, name="real1", dataset="mine"), follow_redirects=False)
+    picks_mod._CACHE.clear()
+    first = c.get("/models/real1").text
+    assert "正在载入数据" in first and 'http-equiv="refresh"' in first
+    for _ in range(100):
+        if picks_mod.is_ready(tmp_path / "runs" / "real1"):
+            break
+        time.sleep(0.1)
+    page = c.get("/models/real1").text
+    assert "收盘后的决策" in page and "正在载入数据" not in page

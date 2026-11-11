@@ -1,0 +1,13 @@
+period_id,book,code,weight,asof_time,available_at,source_ref
+p1,portfolio,A,0.6,2025-01-02T15:00:00+08:00,2025-01-02T15:00:00+08:00,synthetic-holdings
+p1,portfolio,B,0.2,2025-01-02T15:00:00+08:00,2025-01-02T15:00:00+08:00,synthetic-holdings
+p1,portfolio,CASH,0.2,2025-01-02T15:00:00+08:00,2025-01-02T15:00:00+08:00,synthetic-holdings
+p1,benchmark,A,0.5,2025-01-02T15:00:00+08:00,2025-01-02T15:00:00+08:00,synthetic-holdings
+p1,benchmark,B,0.5,2025-01-02T15:00:00+08:00,2025-01-02T15:00:00+08:00,synthetic-holdings
+p1,benchmark,CASH,0,2025-01-02T15:00:00+08:00,2025-01-02T15:00:00+08:00,synthetic-holdings
+p2,portfolio,A,0.6,2025-01-03T15:00:00+08:00,2025-01-03T15:00:00+08:00,synthetic-holdings
+p2,portfolio,B,0.2,2025-01-03T15:00:00+08:00,2025-01-03T15:00:00+08:00,synthetic-holdings
+p2,portfolio,CASH,0.2,2025-01-03T15:00:00+08:00,2025-01-03T15:00:00+08:00,synthetic-holdings
+p2,benchmark,A,0.5,2025-01-03T15:00:00+08:00,2025-01-03T15:00:00+08:00,synthetic-holdings
+p2,benchmark,B,0.5,2025-01-03T15:00:00+08:00,2025-01-03T15:00:00+08:00,synthetic-holdings
+p2,benchmark,CASH,0,2025-01-03T15:00:00+08:00,2025-01-03T15:00:00+08:00,synthetic-holdings

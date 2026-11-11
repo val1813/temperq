@@ -1,0 +1,13 @@
+{
+  "schema_version": "factor_attribution_scope_v1",
+  "start_time": "2025-01-02T15:00:00+08:00",
+  "end_time": "2025-01-06T15:00:00+08:00",
+  "max_exposure_age_days": 10,
+  "holdings_complete": true,
+  "cash_return": "zero",
+  "factors": [
+    {"name": "bank", "kind": "industry", "definition": "Synthetic bank total return", "unit": "return_per_unit_exposure"},
+    {"name": "tech", "kind": "industry", "definition": "Synthetic tech total return", "unit": "return_per_unit_exposure"},
+    {"name": "value", "kind": "style", "definition": "Synthetic standardized industry-adjusted value", "unit": "return_per_unit_exposure"}
+  ]
+}

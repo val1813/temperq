@@ -1,0 +1,7 @@
+code,factor,asof_time,available_at,exposure,source_ref
+A,bank,2025-01-02T15:00:00+08:00,2025-01-02T15:00:00+08:00,1,synthetic-exposure
+A,tech,2025-01-02T15:00:00+08:00,2025-01-02T15:00:00+08:00,0,synthetic-exposure
+A,value,2025-01-02T15:00:00+08:00,2025-01-02T15:00:00+08:00,2,synthetic-exposure
+B,bank,2025-01-02T15:00:00+08:00,2025-01-02T15:00:00+08:00,0,synthetic-exposure
+B,tech,2025-01-02T15:00:00+08:00,2025-01-02T15:00:00+08:00,1,synthetic-exposure
+B,value,2025-01-02T15:00:00+08:00,2025-01-02T15:00:00+08:00,-1,synthetic-exposure

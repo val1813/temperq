@@ -1,0 +1,5 @@
+account_id,currency,date,cash,market_value,equity,position_count
+synthetic-account,CNY,2025-01-02,10000,1000,11000,1
+synthetic-account,CNY,2025-01-03,8995,2100,11095,1
+synthetic-account,CNY,2025-01-06,9780,1925,11705,1
+synthetic-account,CNY,2025-01-07,10731,0,10731,0

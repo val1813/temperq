@@ -1,0 +1,7 @@
+period_id,factor,return,available_at,source_ref
+p1,bank,0.01,2025-01-03T15:00:00+08:00,synthetic-factor-return
+p1,tech,0.02,2025-01-03T15:00:00+08:00,synthetic-factor-return
+p1,value,0.005,2025-01-03T15:00:00+08:00,synthetic-factor-return
+p2,bank,-0.02,2025-01-06T15:00:00+08:00,synthetic-factor-return
+p2,tech,0.04,2025-01-06T15:00:00+08:00,synthetic-factor-return
+p2,value,-0.01,2025-01-06T15:00:00+08:00,synthetic-factor-return
