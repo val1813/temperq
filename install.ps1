@@ -168,11 +168,15 @@ if ($DryRun) { Say '（DryRun：没有实际执行）'; exit 0 }
 
 Say '[3/4] 检查'
 
-& $py -X utf8 -c "import lightgbm, qwb, ashare_tcost; print('lightgbm', lightgbm.__version__)" | Out-Host
+. (Join-Path $PSScriptRoot 'scripts\windows_import_check.ps1')
+$check = Invoke-TemperQPythonCheck -Python $py
+Write-Host $check.Output
 
-if ($LASTEXITCODE -ne 0) {
+if ($check.ExitCode -ne 0) {
 
-    # 干净的 Windows 可能缺 VC++ 运行库（vcomp140.dll），LightGBM 需要它
+    if (-not (Test-TemperQMissingVCRuntime $check.Output)) {
+        throw "依赖导入失败（退出码 $($check.ExitCode)）。上方保留了原始错误；这不一定是 VC++ 运行库问题。若含 MemoryError、OpenBLAS 或内存不足，请关闭占用内存的程序后重试。"
+    }
 
     Say '缺少 Microsoft VC++ 运行库，正在下载安装（会弹出一个确认窗口，点“是”）'
 
@@ -182,17 +186,19 @@ if ($LASTEXITCODE -ne 0) {
 
     Start-Process $vc -ArgumentList '/install', '/passive', '/norestart' -Wait
 
-    & $py -X utf8 -c "import lightgbm, qwb, ashare_tcost" | Out-Host
+    $check = Invoke-TemperQPythonCheck -Python $py
+    Write-Host $check.Output
 
-    if ($LASTEXITCODE -ne 0) { throw 'LightGBM 仍然无法加载。请把这个窗口截图发给维护者。' }
+    if ($check.ExitCode -ne 0) { throw '依赖仍然无法加载，请将上方原始错误发给维护者。' }
 
 }
 
 Say '[4/4] 试运行一次（合成数据，几秒钟）'
 
-& $py -X utf8 -m qwb.cli run examples\run_smoke.yaml | Select-Object -Last 1 | Out-Host
+$smoke = Invoke-TemperQPythonCheck -Python $py -Code "from qwb.cli import main; raise SystemExit(main(['run', 'examples/run_smoke.yaml']))"
+Write-Host $smoke.Output
 
-if ($LASTEXITCODE -ne 0) { throw '试运行失败。请把这个窗口截图发给维护者。' }
+if ($smoke.ExitCode -ne 0) { throw '试运行失败。请把这个窗口截图发给维护者。' }
 
 
 

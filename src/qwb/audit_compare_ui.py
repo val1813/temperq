@@ -34,7 +34,7 @@ def compare_form(token, original=None, error=''):
     body += mode_switch('compare')
     if error:
         body += f'<p role="alert" class="notice warn">{esc(error)}</p>'
-    body += (f'<form class="single-upload" method="post" action="/strategy-audits/compare" enctype="multipart/form-data">'
+    body += (f'<form class="single-upload" data-mode="compare" method="post" action="/strategy-audits/compare" enctype="multipart/form-data">'
              f'<input type="hidden" name="token" value="{esc(token)}">')
     body += '<section class="upload-section"><div class="slot-grid compare-grid">'
     if original:
@@ -48,7 +48,8 @@ def compare_form(token, original=None, error=''):
     body += _slot('modified_files', '修改版回测', '只改了一项设置、同一时期重新回测的导出', DATA_ACCEPT)
     body += _slot('code', '修改版策略代码（选填）', '.py / .txt；ZIP 里已有代码可不传', '.py,.txt', multiple=False)
     body += ('</div></section><div class="slot-submit"><div><button class="primary" type="submit">开始比较 <span aria-hidden="true">→</span></button>'
-             '<p>两版按同一方法重算成本，并排比较净收益、回撤和交易笔数。</p></div></div></form>')
+             '<p>两版按同一方法重算成本，并排比较净收益、回撤和交易笔数。</p>'
+             '<p id="upload-progress" role="status" aria-live="polite">尚未选择文件</p></div></div></form>')
     body += ('<section class="upload-section"><h2>怎样做一次有效的比较</h2><ol class="compare-steps">'
              '<li>一次只改一项设置，比如调仓频率、持股数或单票上限。</li>'
              '<li>保持同一回测时期、同一初始资金、同一费用设置，在原平台重新回测。</li>'

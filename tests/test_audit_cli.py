@@ -25,12 +25,15 @@ def test_check_reads_every_platform_sample_and_closes_the_books(name, capsys):
     assert out["counts"]["fills"] > 0 and out["files"]
 
 
-def test_run_writes_report_summary_evidence_and_scope(tmp_path, capsys):
+@pytest.mark.parametrize("platform", sorted(p.name for p in SAMPLES.iterdir() if p.is_dir()))
+def test_run_writes_report_summary_evidence_and_scope(tmp_path, capsys, platform):
     out_dir = tmp_path / "out"
-    code, out = run(["audit", "run", str(SAMPLES / "generic"), "--out", str(out_dir), "--name", "样例", "--json"], capsys)
-    assert code == 0 and out["status"] == "done" and out["books"] == "provisional"
-    for name in ("report.html", "summary.json", "evidence.json", "stocks.csv", "daily.csv"):
+    code, out = run(["audit", "run", str(SAMPLES / platform), "--out", str(out_dir), "--name", "样例", "--json"], capsys)
+    assert code == 0 and out["status"] == "done"
+    assert out["books"] == ('provisional' if platform in {'generic', 'joinquant', 'ricequant_web'} else 'verified')
+    for name in ("report.html", "checkup.html", "next-steps.md", "summary.json", "evidence.json", "stocks.csv", "daily.csv"):
         assert (out_dir / name).exists(), name
+        assert name in out["files"]
     summary = json.loads((out_dir / "summary.json").read_text(encoding="utf-8"))
     assert summary["schema"] == "qwb_audit_summary_v1" and summary["strategy"] == "样例"
     assert summary["conclusions"] and summary["stages"]
@@ -39,6 +42,16 @@ def test_run_writes_report_summary_evidence_and_scope(tmp_path, capsys):
     report = (out_dir / "report.html").read_text(encoding="utf-8")
     assert "七、审计范围与限制" in report and "已审" in report and "本工具尚不具备" in report
     assert summary["result_digest"] in report
+    assert 'href="checkup.html"' in report and 'href="next-steps.md"' in report
+    from qwb.audit_evidence import projection
+    from qwb.audit_reader import plan
+    from qwb.audit_institutional import checkup_document
+    evidence = json.loads((out_dir / "evidence.json").read_text(encoding="utf-8"))
+    bundle, result = evidence["input"], evidence["result"]
+    assert (out_dir / "next-steps.md").read_text(encoding="utf-8") == plan(
+        [{"label": "本期", "bundle": bundle, "result": projection(bundle, result)}])
+    assert (out_dir / "checkup.html").read_text(encoding="utf-8") == checkup_document(
+        bundle, result, created=evidence["record"]["created_at"])
 
 
 def test_run_never_overwrites_an_earlier_audit(tmp_path, capsys):
@@ -46,6 +59,17 @@ def test_run_never_overwrites_an_earlier_audit(tmp_path, capsys):
     assert run(["audit", "run", str(SAMPLES / "generic"), "--out", str(out_dir), "--json"], capsys)[0] == 0
     code, out = run(["audit", "run", str(SAMPLES / "generic"), "--out", str(out_dir), "--json"], capsys)
     assert code == 2 and "不覆盖" in out["error"]
+
+
+def test_code_only_audit_also_delivers_bounded_companion_files(tmp_path, capsys):
+    materials = tmp_path / "materials"
+    materials.mkdir()
+    (materials / "strategy.py").write_text("raise RuntimeError('must never execute')\n", encoding="utf-8")
+    target = tmp_path / "output"
+    code, out = run(["audit", "run", str(materials), "--out", str(target), "--json"], capsys)
+    assert code == 0 and out["status"] == "done"
+    assert "尚未核实收益" in (target / "checkup.html").read_text(encoding="utf-8")
+    assert "先补凭证或修复账目" in (target / "next-steps.md").read_text(encoding="utf-8")
 
 
 def test_check_fails_when_converted_books_do_not_close(tmp_path, capsys):

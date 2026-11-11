@@ -109,7 +109,8 @@ def performance(bundle):
     opening = bundle.get('opening') or {}
     base = opening.get('cash') if opening.get('kind') == 'empty' else None
     basis = '声明的期初现金' if base else '首日收盘权益（未计首日盈亏）'
-    # Measured from the capital before the first trade, as platforms report it; the first day's result counts.
+    # Include day one only with an explicitly declared empty opening and cash.
+    # Exported NAV or code settings alone do not establish the opening account.
     equity = ([base] if base else []) + [s["equity"] for s in snaps]
     daily = [b / a - 1 for a, b in zip(equity, equity[1:]) if a > 0]
     total = equity[-1] / equity[0] - 1

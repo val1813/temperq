@@ -116,12 +116,16 @@ sh start.sh
 
 ```bash
 qwb audit check  <回测导出目录>                      # 识别材料、核对账目
-qwb audit run    <回测导出目录> --out <输出目录>       # 生成 report.html、evidence.json 与明细 CSV
+qwb audit run    <回测导出目录> --out <输出目录>       # 生成完整报告、体检单、复跑任务单及明细
 qwb audit compare <原版输出> <修改版输出>              # 同一口径比较两个版本
 qwb audit interaction <原版> <只改A> <只改B> <都改>    # 两项改动能否叠加
 ```
 
 完整命令见 `qwb audit --help`。
+
+`audit run` 输出 `report.html`、`checkup.html`、`next-steps.md`、`summary.json`、`evidence.json` 和可用明细 CSV；报告内的配套文件链接为相对路径，整个目录可以一起转发。任务单由审计引擎生成，列出的复跑尚未执行。
+
+未确认期初账户时，收益从首日收盘权益起算，首日盈亏与费用不计入区间；平台净值或代码中的初始资金不会自动用作起点。确认从空仓开始且期间无出入金后，可用 `--opening-cash` 指定期初现金。账户区间不足一个日历年时，不计算或核对年化收益。
 
 ## 文档
 

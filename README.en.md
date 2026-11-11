@@ -99,6 +99,10 @@ qwb audit compare <original-out> <modified-out>
 qwb audit interaction <original> <change-A> <change-B> <both>
 ```
 
+`audit run` writes `report.html`, `checkup.html`, `next-steps.md`, `summary.json`, `evidence.json` and available CSV details. Relative links in the report keep the companion files accessible when sharing the whole output folder. The engine-generated next-run tasks have not been executed.
+
+Without a confirmed opening account, returns start at the first exported close and exclude day one's profit/loss and fees. Exported NAV or capital in strategy code does not establish an opening balance. Use `--opening-cash` only after confirming an empty start and no deposits or withdrawals. Samples shorter than one calendar year are not annualised or compared against platform annual returns.
+
 ## Feedback
 
 Please open an [issue](https://github.com/val1813/temperq/issues), attaching anonymised export headers for new platforms. Contact: val9281@qq.com

@@ -336,6 +336,8 @@ def single(bundle, result, *, identity='', report_id='', created=''):
             body += '本段从首日收盘之后起算；首日交易及费用已包含在起点权益中，因此本段金额与整份交易表总额可能不同。'
         if perf.get('benchmark_total') is not None:
             body += f'同期导出基准 {ratio(perf["benchmark_total"])}；区间收益差 {ratio(perf["excess_total"])}。'
+        if perf['years'] < 1:
+            body += '账户区间不足一个日历年，不计算年化收益，也不核对平台自报年化值。'
         body += '</p>'
     else:
         body += '<p>账户快照不足，未计算区间业绩。</p>'

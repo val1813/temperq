@@ -252,7 +252,8 @@ def summary(bundle, result):
 
 
 def run(args):
-    from . import audit_exports, audit_report, experiments as ex, strategy_audit as audit
+    from . import audit_exports, audit_report, audit_reader, audit_institutional, experiments as ex, strategy_audit as audit
+    from .audit_evidence import projection
     from .governance_review_ui import csv_text
     out = Path(args.out)
     if out.exists() and any(out.iterdir()):
@@ -267,13 +268,19 @@ def run(args):
     record = {"created_at": _now(), "skipped_files": skipped}
     document = ('<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">'
                 '<meta name="viewport" content="width=device-width,initial-scale=1"></head><body>'
-                + audit_report.render(record, bundle, result) + "</body></html>")
+                + audit_report.render(record, bundle, result)
+                + '<nav class="ir-links" aria-label="配套文件"><a href="checkup.html">一页体检单（可打印为 PDF）</a>'
+                  '<a href="next-steps.md" download>下一步复跑任务单</a></nav></body></html>')
     (out / "report.html").write_text(document, encoding="utf-8")
+    (out / "checkup.html").write_text(
+        audit_institutional.checkup_document(bundle, result, created=record["created_at"]), encoding="utf-8")
+    (out / "next-steps.md").write_text(
+        audit_reader.plan([{"label": "本期", "bundle": bundle, "result": projection(bundle, result)}]), encoding="utf-8")
     brief = summary(bundle, result)
     (out / "summary.json").write_text(json.dumps(brief, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
     (out / "evidence.json").write_text(json.dumps({"record": record, "input": bundle, "result": result},
                                                   ensure_ascii=False, default=str), encoding="utf-8")
-    written = ["report.html", "summary.json", "evidence.json"]
+    written = ["report.html", "checkup.html", "next-steps.md", "summary.json", "evidence.json"]
     for kind in audit_exports.available(result):
         rows, columns = audit_exports.table(result, kind)
         (out / f"{kind}.csv").write_text("﻿" + csv_text(rows, columns), encoding="utf-8")

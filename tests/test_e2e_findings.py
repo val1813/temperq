@@ -2,6 +2,8 @@
 
 Each test pins one failure seen on real files, rebuilt here from synthetic text only.
 """
+import pytest
+
 from qwb import audit_attribution, audit_premise, audit_report, strategy_imports as imp
 
 
@@ -40,16 +42,22 @@ def snapshots(*equity):
     return [{"date": (date(2025, 1, 2) + timedelta(days=i)).isoformat(), "equity": e} for i, e in enumerate(equity)]
 
 
-def test_returns_start_from_capital_before_the_first_trade():
-    # Was: measured from the first close, dropping day one's loss (-1.42% shown vs platform -3.31%).
+def test_returns_include_day_one_only_with_confirmed_empty_opening():
     bundle = {"snapshots": snapshots(98000., 99000., 96690.),
+              "code": {"source": "initial_capital = 100000"},
               "platform_returns": [{"date": "2025-01-02", "strategy_pct": -2., "benchmark_pct": 1.},
+                                   {"date": "2025-01-03", "strategy_pct": -1., "benchmark_pct": 1.5},
                                    {"date": "2025-01-04", "strategy_pct": -3.31, "benchmark_pct": 2.}]}
     perf = audit_report.performance(bundle)
+    assert perf["start_equity"] == 98000.
+    assert abs(perf["total"] - (96690 / 98000 - 1)) < 1e-9
+    assert abs(perf["benchmark_total"] - (1.02 / 1.01 - 1)) < 1e-9
+    assert perf["basis"].startswith("首日收盘权益")
+    perf = audit_report.performance({**bundle, "opening": {"kind": "empty", "cash": 100000.}})
     assert abs(perf["start_equity"] - 100000.) < 1e-6
     assert abs(perf["total"] - (-.0331)) < 1e-4
     assert abs(perf["benchmark_total"] - .02) < 1e-9          # from NAV 1, not from day one's close
-    assert perf["basis"] == "平台净值反推的初始资金"
+    assert perf["basis"] == "声明的期初现金"
     plain = audit_report.performance({"snapshots": snapshots(100., 110.)})
     assert plain["basis"].startswith("首日收盘权益")
 
@@ -149,10 +157,22 @@ def test_claimed_return_is_compared_not_inferred():
 
 
 def test_platform_252_day_annualisation_is_recognised():
+    from datetime import date, timedelta
     bundle = {"snapshots": snapshots(*([100.] * 251 + [120.])), "platform_summary": {"年化收益率": "0.2"}}
+    # 252 observations spanning at least a calendar year, not 252 consecutive calendar days.
+    for i, row in enumerate(bundle["snapshots"]):
+        row["date"] = (date(2024, 1, 2) + timedelta(days=round(i * 400 / 251))).isoformat()
     perf = audit_report.performance(bundle)
     rows = {r["label"]: r for r in audit_report.platform_check(bundle, perf)}
     assert rows["年化收益"]["agree"] and "252" in rows["年化收益"]["note"]
+
+
+def test_short_samples_do_not_annualise_or_compare_platform_annual_returns():
+    bundle = {"snapshots": snapshots(*([100.] * 251 + [120.])), "platform_summary": {"年化收益率": "0.2"}}
+    perf = audit_report.performance(bundle)
+    assert perf["total"] == pytest.approx(.2)
+    assert perf["annual"] is None and perf["annual_252"] is None and perf["calmar"] is None
+    assert not any(r["label"] == "年化收益" for r in audit_report.platform_check(bundle, perf))
 
 
 def test_first_screen_answers_three_questions():
