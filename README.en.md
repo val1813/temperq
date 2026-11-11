@@ -80,7 +80,7 @@ Supported platforms: BigQuant, JoinQuant (via the bundled [export script](src/qw
 
 ## The report
 
-The first screen answers three questions: **Can the returns be trusted? Where did the money go? What should be done first?** The body then covers performance and risk, attribution, findings, and scope. Technical detail is collapsed by default; a one-page summary and a full report can be printed to PDF.
+The first screen answers three questions: **Can the returns be trusted? Does the strategy's premise hold? What should change?** Seven chapters are visible by default: conclusions, premise checks, return and risk, attribution, costs and execution, findings and actions, and audit scope. Short answers come first; long statistical explanations can be expanded within the relevant chapter. Web and downloaded reports share this structure, with a separate printable one-page checkup.
 
 ## Principles
 

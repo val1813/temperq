@@ -392,16 +392,13 @@ footer{margin-top:40px;border-top:1px solid var(--line);padding-top:10px;color:v
 def render(record, bundle, result):
     from .audit_evidence import projection
     result = projection(bundle, result)
-    from .audit_institutional import single, partial
+    from .audit_institutional import partial
     if result.get('mode', 'full') != 'full':
         return f'<title>{esc(bundle["name"])} · 回测体检报告</title><style>{STYLE}</style><main>' + partial(bundle, result) + '</article></main>'
-    body = single(bundle, result, created=record.get('created_at', ''))
-    body += ('<details class="ir-appendix"><summary>附录 · 完整计算明细、方法与审计范围</summary><div>'
-             + render_technical(record, bundle, result, body_only=True) + '</div></details></article>')
-    return f'<title>{esc(bundle["name"])} · 策略回测审阅报告</title><style>{STYLE}</style><main>' + body + '</main>'
+    return render_technical(record, bundle, result, readable=True)
 
 
-def render_technical(record, bundle, result, *, body_only=False):
+def render_technical(record, bundle, result, *, body_only=False, readable=False, base=''):
     from .audit_evidence import projection
     result = projection(bundle, result)
     modules = result["modules"]
@@ -411,6 +408,14 @@ def render_technical(record, bundle, result, *, body_only=False):
     cards = audit_actions.cards(result, bundle)
     verdicts = sorted(audit_verdicts.conclusions(bundle, result), key=lambda v: SEVERITY[v["state"]])
     lines = headline(bundle, result, perf, premise, cards, verdicts)
+    from . import audit_readable as reader
+    if readable:
+        from .audit_institutional import checked_attribution
+        if not (checked_attribution(result, bundle) or {}).get('verified'):
+            attr = {}
+        lines = [(tone, text) if not text.startswith('策略前提「') else
+                 (reader.premise_answer(premise)[0], reader.premise_answer(premise)[1] + '。' + reader.premise_answer(premise)[2])
+                 for tone, text in lines]
     platform = PLATFORMS.get(bundle.get("adapter", ""), bundle.get("adapter", ""))
     snaps = bundle.get("snapshots") or []
     period = f'{snaps[0]["date"]} 至 {snaps[-1]["date"]}' if snaps else "—"
@@ -419,24 +424,50 @@ def render_technical(record, bundle, result, *, body_only=False):
                  + ("（券商合同费率已确认）" if s.get("broker_confirmed") else "（未确认合同费率，按情景）"))
 
     h = [] if body_only else [f'<title>{esc(bundle["name"])} · 策略审计报告</title><style>{STYLE}</style><main>']
+    if readable:
+        if not body_only:
+            h.insert(1, '<style>main{max-width:1168px;padding-inline:24px}@media print{main{max-width:none;padding:0}}</style>')
+        h.append(f'<style>{reader.STYLE}</style><article class="tq-report">')
+    created = (record.get('created_at') or '')[:19].replace('T', ' ') or '—'
+    if readable:
+        from .audit_institutional import local_time
+        created = local_time(record.get('created_at') or '')
     # Cover
     h.append('<header class="cover"><p class="kicker">TEMPERQ · 策略回测审计与诊断报告</p>'
              f'<h1>{esc(bundle["name"])}</h1><div class="meta">'
              f'<div><span>回测平台</span><br>{esc(platform)}</div><div><span>审计区间</span><br>{esc(period)}</div>'
              f'<div><span>费用口径</span><br>{esc(fee_basis)}</div>'
-             f'<div><span>报告生成</span><br>{esc((record.get("created_at") or "")[:19].replace("T", " ") or "—")}</div>'
+             f'<div><span>报告生成</span><br>{esc(created)}</div>'
              f'<div><span>输入摘要</span><br><code>{esc(result["input_digest"][7:19])}</code></div>'
              f'<div><span>结果摘要</span><br><code>{esc(result["result_digest"][7:19])}</code></div></div></header>')
 
     # First screen: the three questions a client asks
-    h.append('<section class="answers">')
-    for a in answers(bundle, result, perf, premise, cards):
-        h.append(f'<div class="answer {a["tone"]}"><h3>{a["q"]}<span class="tag {a["tone"]}">{STATE_WORDS[a["tone"]]}</span></h3>'
-                 f'<p class="lead">{esc(a["lead"])}</p>'
-                 + ('<ul>' + "".join(f'<li>{esc(n)}</li>' for n in a["notes"]) + '</ul>' if a["notes"] else '') + '</div>')
-    h.append('</section>')
+    if readable:
+        h.append(reader.summary(bundle, result, perf, premise, cards))
+        from .audit_institutional import inferred_events
+        account = modules.get('accounting') or {}
+        state = '账目已核对' if account.get('status') == 'verified' else '账目待核对，归因暂为草稿'
+        if inferred_events(bundle)['count']:
+            state += '；资金变化含推定项目，收益仍待核实'
+        h.append(f'<p class="mut">{state} · 上传记录内部一致性检查。</p>')
+        if perf:
+            metrics = [('区间收益', _pct(perf['total'], 2)), ('最大回撤', _pct(perf['max_drawdown'], 2)),
+                       ('同期基准', _pct(perf.get('benchmark_total'), 2))]
+            h.append('<div class="kpis">' + ''.join(f'<div><span>{label}</span><strong>{value}</strong></div>' for label, value in metrics) + '</div>')
+            h.append(f'<p class="mut">收益起点：{esc(perf["basis"])}；账目未核实时以上数值为暂算。账户区间不足一个日历年，不计算年化收益。</p>'
+                     if perf['years'] < 1 else f'<p class="mut">收益起点：{esc(perf["basis"])}；账目未核实时以上数值为暂算。</p>')
+        h.append(reader.links(base) + reader.navigation())
+    else:
+        h.append('<section class="answers">')
+        for a in answers(bundle, result, perf, premise, cards):
+            h.append(f'<div class="answer {a["tone"]}"><h3>{a["q"]}<span class="tag {a["tone"]}">{STATE_WORDS[a["tone"]]}</span></h3>'
+                     f'<p class="lead">{esc(a["lead"])}</p>'
+                     + ('<ul>' + "".join(f'<li>{esc(n)}</li>' for n in a["notes"]) + '</ul>' if a["notes"] else '') + '</div>')
+        h.append('</section>')
+    deferred = []
     completed = audit_findings.summarize(result)
     if completed:
+        start = len(h)
         h.append('<section id="audit-findings"><h2>本次审计新增结果</h2>'
                  '<p class="mut">已核实的账目、历史诊断和压力情景分别标注；每项列出处理办法与依据范围。</p>')
         for item in completed:
@@ -445,7 +476,13 @@ def render_technical(record, bundle, result, *, body_only=False):
                      f'<p>{esc(item["text"])}</p><p><b>处理：</b>{esc(item["action"])}</p>'
                      f'<p class="mut">{esc(item["scope"])}</p></article>')
         h.append('</section>')
-    h.append(impact_section(result, cards))
+        if readable:
+            deferred.extend(h[start:])
+            del h[start:]
+    if readable:
+        deferred.append(impact_section(result, cards))
+    else:
+        h.append(impact_section(result, cards))
     claim = claim_check(result, perf)
     if claim:
         h.append('<div class="tw"><table><tr><th>声称收益对照</th><th class="n">声称</th><th class="n">复算</th><th class="n">差</th></tr>'
@@ -455,13 +492,13 @@ def render_technical(record, bundle, result, *, body_only=False):
                  + f'{esc(claim["note"])}。</p>')
 
     # 1. Conclusions
-    h.append('<h2>一、结论摘要</h2><ol class="findings">')
+    h.append('<h2 id="report-conclusions">一、结论摘要</h2><ol class="findings">')
     for tone, text in lines:
         h.append(f'<li><span class="tag {tone}">{STATE_WORDS[tone]}</span>{esc(text)}</li>')
     h.append('</ol><p class="mut">结论只覆盖本次导入的材料与所列口径；回测期间的结果是样本内描述，不代表未来表现，也不构成投资建议。</p>')
 
     # 2. Premise
-    h.append('<h2>二、策略前提检验</h2>')
+    h.append('<h2 id="report-premise">二、策略前提检验</h2>')
     if not premise:
         h.append('<p>未能识别策略依据的因子，也没有导入每日打分，本次未检验策略前提。补充每日打分（覆盖全部候选）与候选池收盘价后可检验。</p>')
     else:
@@ -471,7 +508,12 @@ def render_technical(record, bundle, result, *, body_only=False):
             h.append('<p class="mut">识别依据：' + "；".join(f'第 {f["line"]} 行 <code>{esc(f["code"])}</code>' for f in code["factors"][:3])
                      + ("（代码内嵌的原策略）" if code.get("embedded") else "") + '</p>')
         tone = {"held": "pass", "reversed": "adjust"}.get(premise["status"], "evidence")
-        h.append(f'<p><span class="tag {tone}">结论</span>{esc(premise["verdict"])}</p>')
+        if readable:
+            _, lead, note = reader.premise_answer(premise)
+            h.append(f'<p><strong>{esc(lead)}</strong>。{esc(note)}</p><details class="reader-statistics"><summary>查看完整统计解释与样本量情景</summary>'
+                     f'<p>{esc(premise["verdict"])}</p></details>')
+        else:
+            h.append(f'<p><span class="tag {tone}">结论</span>{esc(premise["verdict"])}</p>')
         o = premise.get("overall")
         if o and o.get("mean") is not None:
             bar = premise["thresholds"]["t"]
@@ -511,7 +553,10 @@ def render_technical(record, bundle, result, *, body_only=False):
             h.append(f'</table></div><p class="mut">收益区间：{esc(premise["return_window"])}。{esc(premise["scope"])}。分段越细期数越少，单段结果容易受运气影响。</p>')
 
     # 3. Return and risk
-    h.append('<h2>三、收益与风险</h2>')
+    h.append('<h2 id="report-performance">三、收益与风险</h2>')
+    if readable and result.get('period_review'):
+        from .strategy_audit_ui import period_section
+        h.append(period_section(result['period_review']))
     if perf:
         k = [("区间收益", _pct(perf["total"])), ("年化收益", _pct(perf["annual"])), ("年化波动", _pct(perf["volatility"])),
              ("夏普比率", "—" if perf["sharpe"] is None else f'{perf["sharpe"]:.2f}'), ("最大回撤", _pct(perf["max_drawdown"])),
@@ -542,15 +587,21 @@ def render_technical(record, bundle, result, *, body_only=False):
         h.append('<p>账户快照不足两天，无法计算收益与风险。</p>')
 
     # 4. Attribution
-    h.append('<h2>四、盈亏归因</h2>')
+    h.append('<h2 id="report-attribution">四、盈亏归因</h2>')
+    if readable:
+        from .audit_institutional import value_section
+        h.append(value_section([{'label': '本期', 'bundle': bundle, 'result': result}]))
     estimated = [a for a in bundle.get("actions") or [] if a.get("cash") and a.get("source") != "supplied"]
     if estimated:
         h.append(f'<p class="mut">有 {len(estimated)} 条现金分红是从账户现金变化推断、按前一日市值分到各持仓的：总额与账户一致，'
                  '但逐只标的的分红归属是估计，可能分给了没有分红权的标的。上传实际公司行动表（date, code, cash, quantity_change）可消除。</p>')
     if attr:
         h.append('<ul>' + "".join(f'<li>{esc(x)}</li>' for x in attr["summary"]) + '</ul>')
-        h.append('<div class="tw"><table><tr><th>项目</th><th class="n">金额</th></tr>' + "".join(
-            f'<tr><td>{esc(w["label"])}</td><td class="n{" neg" if w["value"] < 0 else ""}">{_yuan(w["value"])}</td></tr>' for w in attr["waterfall"]) + '</table></div>')
+        if readable:
+            h.append(reader.attribution_chart(attr))
+        else:
+            h.append('<div class="tw"><table><tr><th>项目</th><th class="n">金额</th></tr>' + "".join(
+                f'<tr><td>{esc(w["label"])}</td><td class="n{" neg" if w["value"] < 0 else ""}">{_yuan(w["value"])}</td></tr>' for w in attr["waterfall"]) + '</table></div>')
         conc = attr["concentration"]
         noun = conc.get("noun", "股票")
         rows = conc["top"] + conc["bottom"]
@@ -562,10 +613,10 @@ def render_technical(record, bundle, result, *, body_only=False):
                 f'<tr><td>{esc(r["label"])}</td><td class="n">{r["matches"]}</td><td class="n">{_yuan(r["net"])}</td><td class="n">{_yuan(r["after_tick"])}</td></tr>' for r in attr["by_holding"])
                 + '</table></div>')
     else:
-        h.append('<p>账目未闭合，未出归因。</p>')
+        h.append('<p>账目或逐标的资金来源尚未核实，未出已核实归因；先补凭证或修复差额。</p>')
 
     # 5. Costs and execution
-    h.append('<h2>五、成本与执行</h2>')
+    h.append('<h2 id="report-costs">五、成本与执行</h2>')
     fees = modules.get("fee_analysis") or {}
     tick = modules.get("tick_analysis") or {}
     rows = [("回测已扣交易费用", _yuan(attr.get("fees") if attr else fees.get("reported_fee")))]
@@ -728,7 +779,14 @@ def render_technical(record, bundle, result, *, body_only=False):
         h.append(f'<p class="mut">{esc(timing["scope"])}。正数表示延后成交反而更好；收盘前来不及延后的成交不计入。</p>')
 
     # 6. Findings
-    h.append('<h2>六、发现与建议</h2>')
+    if readable:
+        from .strategy_audit_ui import research_section, diagnostics_section
+        h.append('<details class="reader-methods"><summary>展开价位、持有期、费用与风险的核验明细</summary>'
+                 + research_section(result, base or '.') + diagnostics_section(result, base or '.') + '</details>')
+    h.append('<h2 id="report-findings">六、发现与建议</h2>')
+    if readable:
+        h.extend(deferred)
+        h.append(reader.governance(result, base))
     if not cards:
         h.append('<p>本次没有可计算的建议。</p>')
     for i, c in enumerate(cards, 1):
@@ -756,7 +814,7 @@ def render_technical(record, bundle, result, *, body_only=False):
 
     # 7. Scope and limitations
     sc = scope(result)
-    h.append(f'<h2>七、审计范围与限制</h2><p>本次共列 {len(sc["done"]) + len(sc["blocked"]) + len(sc["absent"])} 项检查：'
+    h.append(f'<h2 id="report-scope">七、审计范围与限制</h2><p>本次共列 {len(sc["done"]) + len(sc["blocked"]) + len(sc["absent"])} 项检查：'
              f'<span class="pass">已审 {len(sc["done"])} 项</span>，<span class="evidence">缺材料未审 {len(sc["blocked"])} 项</span>，'
              f'<span class="mut">本工具尚不具备 {len(sc["absent"])} 项</span>。没有审到的项目不代表没有问题。</p>')
     h.append('<h3>已审</h3><div class="tw"><table><tr><th>环节</th><th>检查</th></tr>'
@@ -777,6 +835,10 @@ def render_technical(record, bundle, result, *, body_only=False):
              '<li>未提供的材料（如运行日志、委托号、行业与风格数据）对应的环节只能标为缺乏证据。</li></ul>')
 
     # Appendix
+    if readable:
+        from .strategy_audit_ui import coverage_section
+        h.append(coverage_section(bundle, result, expand_reviews=False))
+        h.append(reader.reconciliation(result))
     h.append('<h2>附录 A · 材料清单与核对</h2><div class="tw"><table><tr><th>文件</th><th>识别类型</th><th class="n">行数</th><th>SHA-256（前 12 位）</th></tr>')
     for src in bundle.get("sources") or []:
         h.append(f'<tr><td>{esc(src["name"])}</td><td>{esc(src["kind"])}</td><td class="n">{src.get("rows", "")}</td><td><code>{esc((src.get("sha256") or "")[:12])}</code></td></tr>')
@@ -791,6 +853,12 @@ def render_technical(record, bundle, result, *, body_only=False):
     h.append('<h2>附录 D · 术语</h2><dl class="glossary">' + "".join(f'<dt>{esc(k)}</dt><dd>{esc(v)}</dd>' for k, v in GLOSSARY.items()) + '</dl>')
     h.append(f'<footer>TemperQ 本地生成，数据不离开本机。审计版本 {esc(result["schema_version"])}；输入 {esc(result["input_digest"])}；结果 {esc(result["result_digest"])}。'
              '可下载 evidence.json 与各 CSV 复算。本报告不构成投资建议。</footer>')
+    if readable:
+        from .audit_exports import available
+        root = base + '/' if base else ''
+        h.append('<h3>可复算明细</h3><nav class="reader-links" aria-label="审计明细 CSV">' + ''.join(
+            f'<a href="{root}{kind}.csv">{esc(kind)}.csv</a>' for kind in available(result)) + '</nav>')
+        h.append(reader.links(base) + '</article>')
     if not body_only:
         h.append('</main>')
     return "".join(h)

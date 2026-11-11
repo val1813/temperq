@@ -962,7 +962,8 @@ def fee_units_section(cost, base):
     if cost['unknown_basis_unit_count']:
         body += '<p class="notice">下一步：在策略导入页补委托编号与合同/交割单计费依据；按委托计费须确认该委托最终全部成交已导出。当前情景差额不判为多收费。</p>'
         identity = base.split('/reports/')[0].rsplit('/', 1)[-1]
-        body += '<div class="material-actions">'+material_links(identity, 'fills')+'</div>'
+        if base.startswith('/strategy-audits/'):
+            body += '<div class="material-actions">'+material_links(identity, 'fills')+'</div>'
     body += '<details><summary>收费单位明细</summary><div class="tw"><table><tr><th>日期 / 委托</th><th>证券 / 成交数</th><th>口径</th><th>金额</th><th>报告费用</th><th>模型费用</th><th>差额</th></tr>'
     for unit in cost['charge_units'][:50]:
         label = ('按委托' if unit['basis'] == 'order' else '按成交')+(' · 已有依据' if unit['status'] == 'confirmed' else ' · 情景')
@@ -1059,11 +1060,9 @@ def report_body(identity, report_id, bundle, result, *, created=''):
         return error + materials_only_report(bundle) + f'<p><a href="{base}/evidence.json">下载已收到材料的证据 JSON</a> · <a href="{base}/checkup.html">保存一页体检单</a></p>'
     if result.get('mode', 'full') != 'full':
         return partial_report(identity, bundle, result).replace('{report_id}', report_id)
-    from .audit_institutional import single
-    body = single(bundle, result, identity=identity, report_id=report_id, created=created)
-    body += ('<details class="ir-appendix"><summary>附录 · 完整计算明细、检查依据与材料缺项</summary><div>'
-             + technical_report_body(identity, report_id, bundle, result) + '</div></details></article>')
-    return body
+    from .audit_report import render_technical
+    return render_technical({'created_at': created}, bundle, result, body_only=True, readable=True,
+                            base=f'/strategy-audits/{identity}/reports/{report_id}')
 
 
 def technical_report_body(identity, report_id, bundle, result):

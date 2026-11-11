@@ -269,8 +269,8 @@ def run(args):
     document = ('<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">'
                 '<meta name="viewport" content="width=device-width,initial-scale=1"></head><body>'
                 + audit_report.render(record, bundle, result)
-                + '<nav class="ir-links" aria-label="配套文件"><a href="checkup.html">一页体检单（可打印为 PDF）</a>'
-                  '<a href="next-steps.md" download>下一步复跑任务单</a></nav></body></html>')
+                + ('<nav aria-label="配套文件"><a href="checkup.html">一页体检单</a> · <a href="next-steps.md" download>复跑任务单</a></nav>'
+                   if result.get('mode', 'full') != 'full' else '') + '</body></html>')
     (out / "report.html").write_text(document, encoding="utf-8")
     (out / "checkup.html").write_text(
         audit_institutional.checkup_document(bundle, result, created=record["created_at"]), encoding="utf-8")
